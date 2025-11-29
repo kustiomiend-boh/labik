@@ -2,7 +2,7 @@ name: SonarCloud analysis
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master" ] 
   pull_request:
     branches: [ "master" ]
   workflow_dispatch:
@@ -42,13 +42,22 @@ jobs:
             /d:sonar.exclusions=**/bin/**,**/obj/**,**/sonarcloud.yml `
             /d:sonar.qualitygate.wait=true
 
-      # Тут ми прибрали назву файлу. Dotnet знайде його сам.
+      # Відновлення пакетів
       - name: Restore
         run: dotnet restore
 
-      # Тут теж без назви. --no-incremental змушує будувати все з нуля.
+      # Збірка проекту
       - name: Build
         run: dotnet build -c Release --no-restore --no-incremental
+
+      # --- ДОДАНИЙ КРОК: ЗАПУСК ТЕСТІВ І ЗБІР ПОКРИТТЯ ---
+      - name: Tests with coverage
+        shell: pwsh
+        run: |
+          dotnet test NetSdrClientAppTests/NetSdrClientAppTests.csproj -c Release --no-build `
+            /p:CollectCoverage=true `
+            /p:CoverletOutput=TestResults/coverage.xml `
+            /p:CoverletOutputFormat=opencover
 
       - name: SonarScanner End
         shell: pwsh
