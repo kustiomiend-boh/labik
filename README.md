@@ -1,5 +1,5 @@
 # Лабораторні з реінжинірингу (8×)
-[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=kustiomiend-boh_labik)](https://sonarcloud.io/summary/new_code?id=kustiomiend-boh_labik)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=kustiomiend-boh_labik&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=kustiomiend-boh_labik)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ppanchen_NetSdrClient&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ppanchen_NetSdrClient)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=ppanchen_NetSdrClient&metric=bugs)](https://sonarcloud.io/summary/new_code?id=ppanchen_NetSdrClient)
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=ppanchen_NetSdrClient&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=ppanchen_NetSdrClient)
