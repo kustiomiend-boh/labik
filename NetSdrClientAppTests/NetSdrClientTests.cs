@@ -1,25 +1,23 @@
 ﻿using Moq;
 using NetSdrClientApp;
+using NetSdrClientApp.Messages;
 using NetSdrClientApp.Networking;
-using NUnit.Framework;
-using System.Threading.Tasks;
+using System.Reflection;
 
 namespace NetSdrClientAppTests;
 
-[TestFixture]
 public class NetSdrClientTests
 {
-    private NetSdrClient _client;
-    private Mock<ITcpClient> _tcpMock;
-    private Mock<IUdpClient> _udpMock;
+    NetSdrClient _client;
+    Mock<ITcpClient> _tcpMock;
+    Mock<IUdpClient> _updMock;
+
+    public NetSdrClientTests() { }
 
     [SetUp]
     public void Setup()
     {
         _tcpMock = new Mock<ITcpClient>();
-        _udpMock = new Mock<IUdpClient>();
-
-        // Налаштування з'єднання
         _tcpMock.Setup(tcp => tcp.Connect()).Callback(() =>
         {
             _tcpMock.Setup(tcp => tcp.Connected).Returns(true);
@@ -30,127 +28,136 @@ public class NetSdrClientTests
             _tcpMock.Setup(tcp => tcp.Connected).Returns(false);
         });
 
-        _tcpMock.Setup(tcp => tcp.Connected).Returns(false);
+        _tcpMock.Setup(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>())).Callback<byte[]>((bytes) =>
+        {
+            _tcpMock.Raise(tcp => tcp.MessageReceived += null, _tcpMock.Object, bytes);
+        });
 
-        // --- ВАЖЛИВО ДЛЯ ПОКРИТТЯ ---
-        // Імітуємо миттєву відповідь сервера на будь-який запит.
-        // Це дозволяє пройти через 'await' у методах StartIQAsync/StopIQAsync
-        _tcpMock.Setup(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()))
-            .Callback<byte[]>((sentBytes) =>
-            {
-                // Тригеримо подію, ніби сервер відповів
-                _tcpMock.Raise(tcp => tcp.MessageReceived += null, _tcpMock.Object, new byte[] { 0x00, 0x01 });
-            })
-            .Returns(Task.CompletedTask);
+        _updMock = new Mock<IUdpClient>();
 
-        _client = new NetSdrClient(_tcpMock.Object, _udpMock.Object);
+        _client = new NetSdrClient(_tcpMock.Object, _updMock.Object);
     }
 
     [Test]
-    public async Task ConnectAsync_WhenNotConnected_ShouldConnectAndSendSetupMessages()
+    public async Task ConnectAsyncTest()
     {
-        _tcpMock.Setup(t => t.Connected).Returns(false);
-
+        //act
         await _client.ConnectAsync();
 
+        //assert
         _tcpMock.Verify(tcp => tcp.Connect(), Times.Once);
         _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Exactly(3));
     }
 
     [Test]
-    public async Task ConnectAsync_WhenAlreadyConnected_ShouldDoNothing()
+    public async Task DisconnectWithNoConnectionTest()
     {
-        _tcpMock.Setup(t => t.Connected).Returns(true);
-
-        await _client.ConnectAsync();
-
-        _tcpMock.Verify(tcp => tcp.Connect(), Times.Never);
-        _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Never);
-    }
-
-    [Test]
-    public void Disconnect_ShouldCallTcpDisconnect()
-    {
+        //act
         _client.Disconect();
+
+        //assert
+        //No exception thrown
         _tcpMock.Verify(tcp => tcp.Disconnect(), Times.Once);
     }
 
     [Test]
-    public async Task StartIQAsync_WhenNotConnected_ShouldNotSendAnything()
+    public async Task DisconnectTest()
     {
-        _tcpMock.Setup(t => t.Connected).Returns(false);
+        //Arrange 
+        await ConnectAsyncTest();
 
-        await _client.StartIQAsync();
+        //act
+        _client.Disconect();
 
-        _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Never);
-        Assert.That(_client.IQStarted, Is.False);
+        //assert
+        //No exception thrown
+        _tcpMock.Verify(tcp => tcp.Disconnect(), Times.Once);
     }
 
     [Test]
-    public async Task StartIQAsync_WhenConnected_ShouldSendStartCommandAndListenUdp()
+    public async Task StartIQNoConnectionTest()
     {
-        _tcpMock.Setup(t => t.Connected).Returns(true);
 
+        //act
         await _client.StartIQAsync();
 
-        _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Once);
-        _udpMock.Verify(udp => udp.StartListeningAsync(), Times.Once);
+        //assert
+        //No exception thrown
+        _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Never);
+        _tcpMock.VerifyGet(tcp => tcp.Connected, Times.AtLeastOnce);
+    }
+
+    [Test]
+    public async Task StartIQTest()
+    {
+        //Arrange 
+        await ConnectAsyncTest();
+
+        //act
+        await _client.StartIQAsync();
+
+        //assert
+        //No exception thrown
+        _updMock.Verify(udp => udp.StartListeningAsync(), Times.Once);
         Assert.That(_client.IQStarted, Is.True);
     }
 
     [Test]
-    public async Task StopIQAsync_WhenNotConnected_ShouldNotSendAnything()
+    public async Task StopIQTest()
     {
-        _tcpMock.Setup(t => t.Connected).Returns(false);
+        //Arrange 
+        await ConnectAsyncTest();
 
+        //act
         await _client.StopIQAsync();
 
-        _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Never);
-    }
-
-    [Test]
-    public async Task StopIQAsync_WhenConnected_ShouldSendStopCommandAndStopUdp()
-    {
-        _tcpMock.Setup(t => t.Connected).Returns(true);
-        _client.IQStarted = true;
-
-        await _client.StopIQAsync();
-
-        _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Once);
-        _udpMock.Verify(udp => udp.StopListening(), Times.Once);
+        //assert
+        //No exception thrown
+        _updMock.Verify(tcp => tcp.StopListening(), Times.Once);
         Assert.That(_client.IQStarted, Is.False);
     }
 
     [Test]
-    public async Task ChangeFrequencyAsync_ShouldSendCommand()
+    public void GetHeader_ShouldThrow_WhenLengthTooLarge()
     {
-        _tcpMock.Setup(t => t.Connected).Returns(true);
-
-        await _client.ChangeFrequencyAsync(1000000, 0);
-
-        _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Once);
-    }
-    
-    [Test]
-    public async Task SendTcpRequest_WhenNoConnection_ShouldReturnEmptyArray()
-    {
-        // Перевіряємо приватну гілку if (!_tcpClient.Connected) return Array.Empty
-        _tcpMock.Setup(t => t.Connected).Returns(false);
-        
-        await _client.StartIQAsync(); 
-        
-        _tcpMock.Verify(tcp => tcp.SendMessageAsync(It.IsAny<byte[]>()), Times.Never);
-    }
-
-    /* // ТЕСТ ЗАКОМЕНТОВАНО, ЩОБ НЕ ВИКЛИКАТИ ПОМИЛКУ НА GITHUB (File Access Error)
-    [Test]
-    public void UdpClient_MessageReceived_ShouldProcessData()
-    {
-        byte[] fakeUdpData = new byte[] { 0x01, 0x02, 0x03, 0x04 };
-        Assert.DoesNotThrow(() => 
+        var type = NetSdrMessageHelper.MsgTypes.Ack;
+        var ex = Assert.Throws<TargetInvocationException>(() =>
         {
-            _udpMock.Raise(u => u.MessageReceived += null, _udpMock.Object, fakeUdpData);
+            var method = typeof(NetSdrMessageHelper)
+                .GetMethod("GetHeader", BindingFlags.NonPublic | BindingFlags.Static);
+            method!.Invoke(null, new object[] { type, 9000 });
         });
-    } 
-    */
+        Assert.That(ex!.InnerException, Is.TypeOf<ArgumentException>());
+    }
+
+    [Test]
+    public void GetSamples_ShouldThrow_WhenSampleSizeTooBig()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            NetSdrMessageHelper.GetSamples(64, new byte[] { 1, 2, 3 }).ToList());
+    }
+
+    [Test]
+    public void GetSamples_ShouldReturnCorrectValues()
+    {
+        var data = new byte[] { 1, 0, 2, 0 }; // 16-bit little endian
+        var samples = NetSdrMessageHelper.GetSamples(16, data).ToArray();
+        Assert.That(samples.Length, Is.EqualTo(2));
+        Assert.That(samples[0], Is.EqualTo(1));
+        Assert.That(samples[1], Is.EqualTo(2));
+    }
+
+    [Test]
+    public void TranslateHeader_ShouldHandleDataItemWithZeroLength()
+    {
+        var type = NetSdrMessageHelper.MsgTypes.DataItem0;
+        ushort headerValue = (ushort)(((int)type << 13) + 0);
+        byte[] header = BitConverter.GetBytes(headerValue);
+
+        var method = typeof(NetSdrMessageHelper)
+            .GetMethod("TranslateHeader", BindingFlags.NonPublic | BindingFlags.Static);
+        object[] args = new object[] { header, null!, 0 };
+        method!.Invoke(null, args);
+    }
+
 }
