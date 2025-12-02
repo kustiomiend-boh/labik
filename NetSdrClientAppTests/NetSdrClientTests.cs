@@ -1,18 +1,10 @@
 ﻿using Moq;
-
 using NetSdrClientApp;
-
 using NetSdrClientApp.Messages;
-
 using NetSdrClientApp.Networking;
-
 using System.Reflection;
 
-
-
 namespace NetSdrClientAppTests;
-
-
 
 public class NetSdrClientTests
 
